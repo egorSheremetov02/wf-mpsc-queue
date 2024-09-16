@@ -9,11 +9,6 @@ class WaitFreeMPSCQueue<T>(bufferSizeLog: Int) {
         EMPTY, READY, DEQUEUED
     }
 
-    // we put that as a substitute for the next value
-    private enum class RemovedFromList {
-        INSTANCE
-    }
-
     private enum class IndexInfo {
         BEFORE, AFTER, WITHIN
     }
@@ -33,10 +28,8 @@ class WaitFreeMPSCQueue<T>(bufferSizeLog: Int) {
     private class Buffer<T>(val sizeLog: Int, val index: Long) {
 
         val data: Array<ArrayCell<T>> = Array(1 shl sizeLog) { ArrayCell() }
-        var prevBuffer: Any? = null
-        val nextBuffer: AtomicRef<Any?> = atomic(null)
-
-        fun size(): Int = data.size
+        var prevBuffer: Buffer<T>? = null
+        val nextBuffer: AtomicRef<Buffer<T>?> = atomic(null)
 
         fun indexInfo(idx: Long): IndexInfo {
             val startIndex = index shl sizeLog
@@ -58,11 +51,9 @@ class WaitFreeMPSCQueue<T>(bufferSizeLog: Int) {
 
         fun fold() {
             val next = nextBuffer.value
-            assert(next is Buffer<*>)
-            nextBuffer.value = RemovedFromList.INSTANCE
-
+            assert(next != null)
             // need to make sure that we don't reference folded element from the list
-            (next as Buffer<*>).prevBuffer = null
+            next!!.prevBuffer = null
         }
 
         fun prepareNext(): Buffer<T> {
@@ -70,12 +61,6 @@ class WaitFreeMPSCQueue<T>(bufferSizeLog: Int) {
             nextBuffer.prevBuffer = this
             return nextBuffer
         }
-
-        fun hasValidNext(): Boolean {
-            val next = this.nextBuffer.value
-            return next != null && next != RemovedFromList.INSTANCE
-        }
-
     }
 
     private var head = 0L  // single producer is the only one accessing it, thus safe to leave without volatile/atomic
@@ -95,10 +80,9 @@ class WaitFreeMPSCQueue<T>(bufferSizeLog: Int) {
 
             // can't be just != null check as we also need to make sure we haven't made it available
             // for a garbage collection (which means we have to set next to an auxiliary value)
-            if (next != null && next != RemovedFromList.INSTANCE) {
-                @Suppress("UNCHECKED_CAST")
-                producerBuffer.compareAndSet(buffer, next as Buffer<T>)
-            } else if (next == null) {  // then we try to create a next element
+            if (next != null) {
+                producerBuffer.compareAndSet(buffer, next)
+            } else {  // then we try to create a next element
                 val nextBuffer = buffer.prepareNext()
                 if (buffer.nextBuffer.compareAndSet(null, nextBuffer)) {
                     producerBuffer.compareAndSet(buffer, nextBuffer)
@@ -113,8 +97,8 @@ class WaitFreeMPSCQueue<T>(bufferSizeLog: Int) {
         var wentBackwards = false
         // INVARIANT: buffer.indexInfo(itemPos) != IndexInfo.AFTER
         while (buffer.indexInfo(itemPos) == IndexInfo.BEFORE) {  // we should be somewhere before
-            @Suppress("UNCHECKED_CAST")
-            buffer = buffer.prevBuffer!! as Buffer<T>  // should be safe to do
+            buffer = buffer.prevBuffer!!  // should be safe to do, as we would only fold this previous buffer in case
+            // we had all the elements from it dequeued
             wentBackwards = true
         }
 
@@ -146,8 +130,7 @@ class WaitFreeMPSCQueue<T>(bufferSizeLog: Int) {
                 // here we are sure that next != RemovedFromList.INSTANCE as only consumer thread has the ability
                 // to set nextBuffer to RemovedFromList.INSTANCE (to help the GC by detaching it from the list)
                 // thus, this cast should be correct
-                @Suppress("UNCHECKED_CAST")
-                consumerBuffer = next as Buffer<T>
+                consumerBuffer = next
                 if (producerBuffer.value == oldConsumer) {  // sorta helping but not really
                     producerBuffer.compareAndSet(oldConsumer, next)
                 }
@@ -198,15 +181,10 @@ class WaitFreeMPSCQueue<T>(bufferSizeLog: Int) {
                 }
 
                 if (curBuffer.indexInfo(curIndex) == IndexInfo.AFTER) {
-                    if (curBuffer.nextBuffer.value == null) {  // we have no further to scan
-                        return null
-                    }
+                    val next = curBuffer.nextBuffer.value
+                        ?: return null  // we have no further to scan, and all up to now are still in the insertion process
 
-                    // here we are sure that next != RemovedFromList.INSTANCE as only consumer thread has the ability
-                    // to set nextBuffer to RemovedFromList.INSTANCE (to help the GC by detaching it from the list)
-                    // thus, this cast should be correct
-                    @Suppress("UNCHECKED_CAST")
-                    curBuffer = curBuffer.nextBuffer.value as Buffer<T>
+                    curBuffer = next
                 }
 
                 curCell = curBuffer.read(curIndex)
