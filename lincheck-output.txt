@@ -1,0 +1,250 @@
+
+= Invalid execution results =
+| ------------------------------------ |
+|     Thread 1     |     Thread 2      |
+| ------------------------------------ |
+| enqueue(1): void |                   |
+| dequeue(): 1     |                   |
+| ------------------------------------ |
+| dequeue(): null  | enqueue(-1): void |
+| ------------------------------------ |
+
+---
+All operations above the horizontal line | ----- | happen before those below the line
+---
+
+The following interleaving leads to the error:
+| -------------------------------------------------------------------------------------------------------------------------- |
+|    Thread 1     |                                                 Thread 2                                                 |
+| -------------------------------------------------------------------------------------------------------------------------- |
+| enqueue(1)      |                                                                                                          |
+| dequeue(): 1    |                                                                                                          |
+| -------------------------------------------------------------------------------------------------------------------------- |
+|                 | enqueue(-1)                                                                                              |
+|                 |   q.enqueue(-1) at TestWaitFreeMPSCQueue.enqueue(LinearizabilityTests.kt:34)                             |
+|                 |     tail.getAndIncrement(): 1 at WaitFreeMPSCQueue.enqueue(WaitFreeMPSCQueue.kt:88)                      |
+|                 |     switch                                                                                               |
+| dequeue(): null |                                                                                                          |
+|                 |     producerBuffer.READ: Buffer#2 at WaitFreeMPSCQueue.enqueue(WaitFreeMPSCQueue.kt:89)                  |
+|                 |     nextBuffer.compareAndSet(null,Buffer#3): true at WaitFreeMPSCQueue.enqueue(WaitFreeMPSCQueue.kt:128) |
+|                 |   result: void                                                                                           |
+| -------------------------------------------------------------------------------------------------------------------------- |
+
+Detailed trace:
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|                                                     Thread 1                                                     |                                                 Thread 2                                                 |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| enqueue(1)                                                                                                       |                                                                                                          |
+|   q.enqueue(1) at TestWaitFreeMPSCQueue.enqueue(LinearizabilityTests.kt:34)                                      |                                                                                                          |
+|     tail.getAndIncrement(): 0 at WaitFreeMPSCQueue.enqueue(WaitFreeMPSCQueue.kt:88)                              |                                                                                                          |
+|     producerBuffer.READ: Buffer#1 at WaitFreeMPSCQueue.enqueue(WaitFreeMPSCQueue.kt:89)                          |                                                                                                          |
+|     Buffer#1.assign(0,1) at WaitFreeMPSCQueue.enqueue(WaitFreeMPSCQueue.kt:122)                                  |                                                                                                          |
+|       read(0): ArrayCell#1 at WaitFreeMPSCQueue$Buffer.assign(WaitFreeMPSCQueue.kt:55)                           |                                                                                                          |
+|         Array<ArrayCell>#1[0].READ: ArrayCell#1 at WaitFreeMPSCQueue$Buffer.read(WaitFreeMPSCQueue.kt:57)        |                                                                                                          |
+|       ArrayCell#1.setValue(1) at WaitFreeMPSCQueue$Buffer.assign(WaitFreeMPSCQueue.kt:55)                        |                                                                                                          |
+|         elem.WRITE(1) at WaitFreeMPSCQueue$ArrayCell.setValue(WaitFreeMPSCQueue.kt:28)                           |                                                                                                          |
+|         state.WRITE(READY) at WaitFreeMPSCQueue$ArrayCell.setValue(WaitFreeMPSCQueue.kt:29)                      |                                                                                                          |
+|     nextBuffer.compareAndSet(null,Buffer#2): true at WaitFreeMPSCQueue.enqueue(WaitFreeMPSCQueue.kt:128)         |                                                                                                          |
+|   result: void                                                                                                   |                                                                                                          |
+| dequeue(): 1                                                                                                     |                                                                                                          |
+|   q.dequeue(): 1 at TestWaitFreeMPSCQueue.dequeue(LinearizabilityTests.kt:37)                                    |                                                                                                          |
+|     tail.READ: 1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:134)                                          |                                                                                                          |
+|     head.READ: 0 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:135)                                          |                                                                                                          |
+|     consumerBuffer.READ: Buffer#1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:138)                         |                                                                                                          |
+|     head.READ: 0 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:138)                                          |                                                                                                          |
+|     consumerBuffer.READ: Buffer#1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:162)                         |                                                                                                          |
+|     head.READ: 0 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:162)                                          |                                                                                                          |
+|     consumerBuffer.READ: Buffer#1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:163)                         |                                                                                                          |
+|     head.READ: 0 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:163)                                          |                                                                                                          |
+|     Buffer#1.read(0): ArrayCell#1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:163)                         |                                                                                                          |
+|       Array<ArrayCell>#1[0].READ: ArrayCell#1 at WaitFreeMPSCQueue$Buffer.read(WaitFreeMPSCQueue.kt:57)          |                                                                                                          |
+|     ArrayCell#1.state.READ: READY at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:163)                         |                                                                                                          |
+|     consumerBuffer.READ: Buffer#1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:172)                         |                                                                                                          |
+|     head.READ: 0 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:172)                                          |                                                                                                          |
+|     head.READ: 0 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:174)                                          |                                                                                                          |
+|     consumerBuffer.READ: Buffer#1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:180)                         |                                                                                                          |
+|     head.READ: 0 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:180)                                          |                                                                                                          |
+|     Buffer#1.read(0): ArrayCell#1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:180)                         |                                                                                                          |
+|       Array<ArrayCell>#1[0].READ: ArrayCell#1 at WaitFreeMPSCQueue$Buffer.read(WaitFreeMPSCQueue.kt:57)          |                                                                                                          |
+|     ArrayCell#1.state.READ: READY at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:180)                         |                                                                                                          |
+|     consumerBuffer.READ: Buffer#1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:250)                         |                                                                                                          |
+|     head.READ: 0 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:250)                                          |                                                                                                          |
+|     Buffer#1.read(0): ArrayCell#1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:250)                         |                                                                                                          |
+|       Array<ArrayCell>#1[0].READ: ArrayCell#1 at WaitFreeMPSCQueue$Buffer.read(WaitFreeMPSCQueue.kt:57)          |                                                                                                          |
+|     ArrayCell#1.state.READ: READY at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:252)                         |                                                                                                          |
+|     ArrayCell#1.state.WRITE(DEQUEUED) at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:253)                     |                                                                                                          |
+|     head.READ: 0 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:254)                                          |                                                                                                          |
+|     head.WRITE(1) at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:254)                                         |                                                                                                          |
+|     head.READ: 1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:254)                                          |                                                                                                          |
+|     ArrayCell#1.unwrap(): 1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:255)                               |                                                                                                          |
+|       elem.READ: 1 at WaitFreeMPSCQueue$ArrayCell.unwrap(WaitFreeMPSCQueue.kt:25)                                |                                                                                                          |
+|   result: 1                                                                                                      |                                                                                                          |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|                                                                                                                  | enqueue(-1)                                                                                              |
+|                                                                                                                  |   q.enqueue(-1) at TestWaitFreeMPSCQueue.enqueue(LinearizabilityTests.kt:34)                             |
+|                                                                                                                  |     tail.getAndIncrement(): 1 at WaitFreeMPSCQueue.enqueue(WaitFreeMPSCQueue.kt:88)                      |
+|                                                                                                                  |     switch                                                                                               |
+| dequeue(): null                                                                                                  |                                                                                                          |
+|   q.dequeue(): null at TestWaitFreeMPSCQueue.dequeue(LinearizabilityTests.kt:37)                                 |                                                                                                          |
+|     tail.READ: 2 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:134)                                          |                                                                                                          |
+|     head.READ: 1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:135)                                          |                                                                                                          |
+|     consumerBuffer.READ: Buffer#1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:138)                         |                                                                                                          |
+|     head.READ: 1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:138)                                          |                                                                                                          |
+|     consumerBuffer.READ: Buffer#1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:142)                         |                                                                                                          |
+|     Buffer#1.nextBuffer.READ: Buffer#2 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:142)                    |                                                                                                          |
+|     consumerBuffer.READ: Buffer#1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:144)                         |                                                                                                          |
+|     consumerBuffer.WRITE(Buffer#2) at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:150)                        |                                                                                                          |
+|     producerBuffer.READ: Buffer#1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:151)                         |                                                                                                          |
+|     producerBuffer.compareAndSet(Buffer#1,Buffer#2): true at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:152) |                                                                                                          |
+|     Buffer#1.fold() at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:154)                                       |                                                                                                          |
+|       nextBuffer.READ: Buffer#2 at WaitFreeMPSCQueue$Buffer.fold(WaitFreeMPSCQueue.kt:60)                        |                                                                                                          |
+|       nextBuffer.WRITE(INSTANCE) at WaitFreeMPSCQueue$Buffer.fold(WaitFreeMPSCQueue.kt:62)                       |                                                                                                          |
+|       Buffer#2.prevBuffer.WRITE(null) at WaitFreeMPSCQueue$Buffer.fold(WaitFreeMPSCQueue.kt:65)                  |                                                                                                          |
+|     consumerBuffer.READ: Buffer#2 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:162)                         |                                                                                                          |
+|     head.READ: 1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:162)                                          |                                                                                                          |
+|     consumerBuffer.READ: Buffer#2 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:163)                         |                                                                                                          |
+|     head.READ: 1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:163)                                          |                                                                                                          |
+|     consumerBuffer.READ: Buffer#2 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:172)                         |                                                                                                          |
+|     head.READ: 1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:172)                                          |                                                                                                          |
+|     head.READ: 1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:174)                                          |                                                                                                          |
+|     consumerBuffer.READ: Buffer#2 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:180)                         |                                                                                                          |
+|     head.READ: 1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:180)                                          |                                                                                                          |
+|     consumerBuffer.READ: Buffer#2 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:185)                         |                                                                                                          |
+|     head.READ: 1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:186)                                          |                                                                                                          |
+|   result: null                                                                                                   |                                                                                                          |
+|                                                                                                                  |     producerBuffer.READ: Buffer#2 at WaitFreeMPSCQueue.enqueue(WaitFreeMPSCQueue.kt:89)                  |
+|                                                                                                                  |     nextBuffer.compareAndSet(null,Buffer#3): true at WaitFreeMPSCQueue.enqueue(WaitFreeMPSCQueue.kt:128) |
+|                                                                                                                  |   result: void                                                                                           |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+org.jetbrains.kotlinx.lincheck.LincheckAssertionError:
+= Invalid execution results =
+| ------------------------------------ |
+|     Thread 1     |     Thread 2      |
+| ------------------------------------ |
+| enqueue(1): void |                   |
+| dequeue(): 1     |                   |
+| ------------------------------------ |
+| dequeue(): null  | enqueue(-1): void |
+| ------------------------------------ |
+
+---
+All operations above the horizontal line | ----- | happen before those below the line
+---
+
+The following interleaving leads to the error:
+| -------------------------------------------------------------------------------------------------------------------------- |
+|    Thread 1     |                                                 Thread 2                                                 |
+| -------------------------------------------------------------------------------------------------------------------------- |
+| enqueue(1)      |                                                                                                          |
+| dequeue(): 1    |                                                                                                          |
+| -------------------------------------------------------------------------------------------------------------------------- |
+|                 | enqueue(-1)                                                                                              |
+|                 |   q.enqueue(-1) at TestWaitFreeMPSCQueue.enqueue(LinearizabilityTests.kt:34)                             |
+|                 |     tail.getAndIncrement(): 1 at WaitFreeMPSCQueue.enqueue(WaitFreeMPSCQueue.kt:88)                      |
+|                 |     switch                                                                                               |
+| dequeue(): null |                                                                                                          |
+|                 |     producerBuffer.READ: Buffer#2 at WaitFreeMPSCQueue.enqueue(WaitFreeMPSCQueue.kt:89)                  |
+|                 |     nextBuffer.compareAndSet(null,Buffer#3): true at WaitFreeMPSCQueue.enqueue(WaitFreeMPSCQueue.kt:128) |
+|                 |   result: void                                                                                           |
+| -------------------------------------------------------------------------------------------------------------------------- |
+
+Detailed trace:
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|                                                     Thread 1                                                     |                                                 Thread 2                                                 |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| enqueue(1)                                                                                                       |                                                                                                          |
+|   q.enqueue(1) at TestWaitFreeMPSCQueue.enqueue(LinearizabilityTests.kt:34)                                      |                                                                                                          |
+|     tail.getAndIncrement(): 0 at WaitFreeMPSCQueue.enqueue(WaitFreeMPSCQueue.kt:88)                              |                                                                                                          |
+|     producerBuffer.READ: Buffer#1 at WaitFreeMPSCQueue.enqueue(WaitFreeMPSCQueue.kt:89)                          |                                                                                                          |
+|     Buffer#1.assign(0,1) at WaitFreeMPSCQueue.enqueue(WaitFreeMPSCQueue.kt:122)                                  |                                                                                                          |
+|       read(0): ArrayCell#1 at WaitFreeMPSCQueue$Buffer.assign(WaitFreeMPSCQueue.kt:55)                           |                                                                                                          |
+|         Array<ArrayCell>#1[0].READ: ArrayCell#1 at WaitFreeMPSCQueue$Buffer.read(WaitFreeMPSCQueue.kt:57)        |                                                                                                          |
+|       ArrayCell#1.setValue(1) at WaitFreeMPSCQueue$Buffer.assign(WaitFreeMPSCQueue.kt:55)                        |                                                                                                          |
+|         elem.WRITE(1) at WaitFreeMPSCQueue$ArrayCell.setValue(WaitFreeMPSCQueue.kt:28)                           |                                                                                                          |
+|         state.WRITE(READY) at WaitFreeMPSCQueue$ArrayCell.setValue(WaitFreeMPSCQueue.kt:29)                      |                                                                                                          |
+|     nextBuffer.compareAndSet(null,Buffer#2): true at WaitFreeMPSCQueue.enqueue(WaitFreeMPSCQueue.kt:128)         |                                                                                                          |
+|   result: void                                                                                                   |                                                                                                          |
+| dequeue(): 1                                                                                                     |                                                                                                          |
+|   q.dequeue(): 1 at TestWaitFreeMPSCQueue.dequeue(LinearizabilityTests.kt:37)                                    |                                                                                                          |
+|     tail.READ: 1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:134)                                          |                                                                                                          |
+|     head.READ: 0 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:135)                                          |                                                                                                          |
+|     consumerBuffer.READ: Buffer#1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:138)                         |                                                                                                          |
+|     head.READ: 0 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:138)                                          |                                                                                                          |
+|     consumerBuffer.READ: Buffer#1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:162)                         |                                                                                                          |
+|     head.READ: 0 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:162)                                          |                                                                                                          |
+|     consumerBuffer.READ: Buffer#1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:163)                         |                                                                                                          |
+|     head.READ: 0 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:163)                                          |                                                                                                          |
+|     Buffer#1.read(0): ArrayCell#1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:163)                         |                                                                                                          |
+|       Array<ArrayCell>#1[0].READ: ArrayCell#1 at WaitFreeMPSCQueue$Buffer.read(WaitFreeMPSCQueue.kt:57)          |                                                                                                          |
+|     ArrayCell#1.state.READ: READY at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:163)                         |                                                                                                          |
+|     consumerBuffer.READ: Buffer#1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:172)                         |                                                                                                          |
+|     head.READ: 0 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:172)                                          |                                                                                                          |
+|     head.READ: 0 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:174)                                          |                                                                                                          |
+|     consumerBuffer.READ: Buffer#1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:180)                         |                                                                                                          |
+|     head.READ: 0 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:180)                                          |                                                                                                          |
+|     Buffer#1.read(0): ArrayCell#1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:180)                         |                                                                                                          |
+|       Array<ArrayCell>#1[0].READ: ArrayCell#1 at WaitFreeMPSCQueue$Buffer.read(WaitFreeMPSCQueue.kt:57)          |                                                                                                          |
+|     ArrayCell#1.state.READ: READY at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:180)                         |                                                                                                          |
+|     consumerBuffer.READ: Buffer#1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:250)                         |                                                                                                          |
+|     head.READ: 0 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:250)                                          |                                                                                                          |
+|     Buffer#1.read(0): ArrayCell#1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:250)                         |                                                                                                          |
+|       Array<ArrayCell>#1[0].READ: ArrayCell#1 at WaitFreeMPSCQueue$Buffer.read(WaitFreeMPSCQueue.kt:57)          |                                                                                                          |
+|     ArrayCell#1.state.READ: READY at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:252)                         |                                                                                                          |
+|     ArrayCell#1.state.WRITE(DEQUEUED) at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:253)                     |                                                                                                          |
+|     head.READ: 0 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:254)                                          |                                                                                                          |
+|     head.WRITE(1) at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:254)                                         |                                                                                                          |
+|     head.READ: 1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:254)                                          |                                                                                                          |
+|     ArrayCell#1.unwrap(): 1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:255)                               |                                                                                                          |
+|       elem.READ: 1 at WaitFreeMPSCQueue$ArrayCell.unwrap(WaitFreeMPSCQueue.kt:25)                                |                                                                                                          |
+|   result: 1                                                                                                      |                                                                                                          |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|                                                                                                                  | enqueue(-1)                                                                                              |
+|                                                                                                                  |   q.enqueue(-1) at TestWaitFreeMPSCQueue.enqueue(LinearizabilityTests.kt:34)                             |
+|                                                                                                                  |     tail.getAndIncrement(): 1 at WaitFreeMPSCQueue.enqueue(WaitFreeMPSCQueue.kt:88)                      |
+|                                                                                                                  |     switch                                                                                               |
+| dequeue(): null                                                                                                  |                                                                                                          |
+|   q.dequeue(): null at TestWaitFreeMPSCQueue.dequeue(LinearizabilityTests.kt:37)                                 |                                                                                                          |
+|     tail.READ: 2 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:134)                                          |                                                                                                          |
+|     head.READ: 1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:135)                                          |                                                                                                          |
+|     consumerBuffer.READ: Buffer#1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:138)                         |                                                                                                          |
+|     head.READ: 1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:138)                                          |                                                                                                          |
+|     consumerBuffer.READ: Buffer#1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:142)                         |                                                                                                          |
+|     Buffer#1.nextBuffer.READ: Buffer#2 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:142)                    |                                                                                                          |
+|     consumerBuffer.READ: Buffer#1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:144)                         |                                                                                                          |
+|     consumerBuffer.WRITE(Buffer#2) at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:150)                        |                                                                                                          |
+|     producerBuffer.READ: Buffer#1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:151)                         |                                                                                                          |
+|     producerBuffer.compareAndSet(Buffer#1,Buffer#2): true at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:152) |                                                                                                          |
+|     Buffer#1.fold() at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:154)                                       |                                                                                                          |
+|       nextBuffer.READ: Buffer#2 at WaitFreeMPSCQueue$Buffer.fold(WaitFreeMPSCQueue.kt:60)                        |                                                                                                          |
+|       nextBuffer.WRITE(INSTANCE) at WaitFreeMPSCQueue$Buffer.fold(WaitFreeMPSCQueue.kt:62)                       |                                                                                                          |
+|       Buffer#2.prevBuffer.WRITE(null) at WaitFreeMPSCQueue$Buffer.fold(WaitFreeMPSCQueue.kt:65)                  |                                                                                                          |
+|     consumerBuffer.READ: Buffer#2 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:162)                         |                                                                                                          |
+|     head.READ: 1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:162)                                          |                                                                                                          |
+|     consumerBuffer.READ: Buffer#2 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:163)                         |                                                                                                          |
+|     head.READ: 1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:163)                                          |                                                                                                          |
+|     consumerBuffer.READ: Buffer#2 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:172)                         |                                                                                                          |
+|     head.READ: 1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:172)                                          |                                                                                                          |
+|     head.READ: 1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:174)                                          |                                                                                                          |
+|     consumerBuffer.READ: Buffer#2 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:180)                         |                                                                                                          |
+|     head.READ: 1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:180)                                          |                                                                                                          |
+|     consumerBuffer.READ: Buffer#2 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:185)                         |                                                                                                          |
+|     head.READ: 1 at WaitFreeMPSCQueue.dequeue(WaitFreeMPSCQueue.kt:186)                                          |                                                                                                          |
+|   result: null                                                                                                   |                                                                                                          |
+|                                                                                                                  |     producerBuffer.READ: Buffer#2 at WaitFreeMPSCQueue.enqueue(WaitFreeMPSCQueue.kt:89)                  |
+|                                                                                                                  |     nextBuffer.compareAndSet(null,Buffer#3): true at WaitFreeMPSCQueue.enqueue(WaitFreeMPSCQueue.kt:128) |
+|                                                                                                                  |   result: void                                                                                           |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+	at org.jetbrains.kotlinx.lincheck.LinChecker$check$1.invoke(LinChecker.kt:48)
+	at org.jetbrains.kotlinx.lincheck.LinChecker$check$1.invoke(LinChecker.kt:47)
+	at org.jetbrains.kotlinx.lincheck.LinChecker.checkImpl$lincheck(LinChecker.kt:67)
+	at org.jetbrains.kotlinx.lincheck.LinChecker.check(LinChecker.kt:47)
+	at org.jetbrains.kotlinx.lincheck.LinChecker$Companion.check(LinChecker.kt:195)
+	at org.jetbrains.kotlinx.lincheck.LinCheckerKt.check(LinChecker.kt:295)
+	at org.jetbrains.kotlinx.lincheck.LinCheckerKt.check(LinChecker.kt:304)
+	at TestWaitFreeMPSCQueue.modelCheckingTest(Unknown Source)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at java.base/java.util.ArrayList.forEach(Unknown Source)
+	at java.base/java.util.ArrayList.forEach(Unknown Source)
+
